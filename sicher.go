@@ -1,35 +1,69 @@
 package sicher
 
 import (
+    "appengine"
+    "appengine/datastore"
+    "appengine/taskqueue"
+    "appengine/urlfetch"
     "fmt"
+    "io/ioutil"
     "net/http"
     "net/url"
-    "appengine"
-    "appengine/urlfetch"
-    "appengine/taskqueue"
-    "io/ioutil"
+    "time"
 )
+
+type Site struct {
+    Url       string
+    CreatedAt time.Time
+}
 
 func init() {
     http.HandleFunc("/", handler)
     http.HandleFunc("/checks", checksHandler)
     http.HandleFunc("/hping", hpingHandler)
     http.HandleFunc("/notification/slack", slackHandler)
+    http.HandleFunc("/sites", sitesHandler)
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, "Hello, world!")
 }
 
+func sitesHandler(w http.ResponseWriter, r *http.Request) {
+    if (r.Method == "POST") {
+        createSitesHandler(w, r)
+        return
+    }
+}
+
+func createSitesHandler(w http.ResponseWriter, r *http.Request) {
+    url := r.FormValue("url")
+
+    c := appengine.NewContext(r)
+    s := Site{
+        Url: url,
+        CreatedAt: time.Now(),
+    }
+    _, err := datastore.Put(c, datastore.NewIncompleteKey(c, "site", nil), &s)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+}
+
 func checksHandler(w http.ResponseWriter, r *http.Request) {
     c := appengine.NewContext(r)
-    myurls := []string{
-      "http://eiel.info/",
-      "http://parkmap.eiel.info/",
+    q := datastore.NewQuery("site").
+        Order("CreatedAt")
+    var sites []Site
+    _, err := q.GetAll(c, &sites)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
     }
-    for _, value := range myurls {
+    for _, site := range sites {
        t := taskqueue.NewPOSTTask("/hping",
-         map[string][]string{"url": {value}})
+         map[string][]string{"url": {site.Url}})
        if _, err := taskqueue.Add(c, t, ""); err != nil {
            http.Error(w, err.Error(), http.StatusInternalServerError)
            return
@@ -43,6 +77,7 @@ func hpingHandler(w http.ResponseWriter, r *http.Request) {
     c := appengine.NewContext(r)
     client := urlfetch.Client(c)
 
+    c.Debugf("HEAD " + url)
     resp, err := client.Head(url)
     if err != nil {
         c.Debugf("Fail",)
@@ -80,7 +115,7 @@ func slackHandler(w http.ResponseWriter, r *http.Request) {
    client := urlfetch.Client(c)
    resp ,err  := client.PostForm(slackUrl, values)
     if err != nil {
-         c.Infof("slackHandler: {err2.Error()}",)
+         c.Infof("slackHandler: {err.Error()}",)
     } else {
        contents, _ := ioutil.ReadAll(resp.Body)
        fmt.Fprint(w, string(contents))
