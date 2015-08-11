@@ -10,19 +10,21 @@ import (
     "io/ioutil"
     "net/http"
     "net/url"
+    "strconv"
     "time"
 )
 
 type Site struct {
     Url       string
-    Owners     []string
+    Owners    []string
     CreatedAt time.Time
+    UpdatedAt time.Time
 }
 
 func init() {
     http.HandleFunc("/", handler)
     http.HandleFunc("/checks", checksHandler)
-    http.HandleFunc("/hping", hpingHandler)
+    http.HandleFunc("/hping", hPingHandler)
     http.HandleFunc("/notification/slack", slackHandler)
     http.HandleFunc("/sites", sitesHandler)
     http.HandleFunc("/signOut", signOutHandler)
@@ -75,28 +77,45 @@ func sitesHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
     switch r.Method {
-    case "POST": createSites(w, r, u)
-    case "GET":
+    case "GET":{
         c := appengine.NewContext(r)
         fmt.Fprintln(w, u)
         if u.Admin {
-            fmt.Fprintln(w, "admin")
+            fmt.Fprintln(w, "!!admin!!")
         }
-        var sites []Site
         q := datastore.NewQuery("site").
+        Filter("Owners =", u.Email).
         Order("CreatedAt")
-        if !u.Admin {
-            q = q.Filter("Owners =", u.Email)
+        if u.Admin {
+            q = querySiteAll()
         }
 
+        var sites []Site
         keys, err := q.GetAll(c, &sites)
         if err != nil {
             http.Error(w, err.Error(), http.StatusInternalServerError)
             return
         }
+        fmt.Fprintln(w, sites)
         for i, site := range sites {
             fmt.Fprint(w,keys[i])
             fmt.Fprint(w,":" + site.Url + "\n")
+        }
+        fmt.Fprintln(w, "sicher")
+    }
+    case "POST": createSites(w, r, u)
+    case "DELETE":
+        {
+            c := appengine.NewContext(r)
+            intId, err := strconv.ParseInt(r.FormValue("intId"), 0, 64)
+            if err != nil {
+                http.Error(w, err.Error(), http.StatusInternalServerError)
+                return
+            }
+            key := datastore.NewKey(c, "site", "", intId, nil)
+            if u.Admin {
+                datastore.Delete(c, key)
+            }
         }
     }
 }
@@ -105,22 +124,48 @@ func createSites(w http.ResponseWriter, r *http.Request, u *user.User) {
     url := r.FormValue("url")
 
     c := appengine.NewContext(r)
-    s := Site{
-        Url: url,
-        Owners: []string{u.Email},
-        CreatedAt: time.Now(),
-    }
-    _, err := datastore.Put(c, datastore.NewIncompleteKey(c, "site", nil), &s)
+    q := datastore.NewQuery("site").Filter("Url =", url)
+    var sites []Site
+    keys, err := q.GetAll(c, &sites)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    var site Site
+    var key *datastore.Key
+    if len(sites) == 0 {
+        site = Site{
+            Url: url,
+            Owners: []string{u.Email},
+            CreatedAt: time.Now(),
+            UpdatedAt: time.Now(),
+        }
+        key = datastore.NewIncompleteKey(c, "site", nil)
+    } else {
+        key = keys[0]
+        site = sites[0]
+        any := false
+        for _, owner := range site.Owners {
+            if owner == u.Email {
+                any = true
+            }
+        }
+        if !any {
+            site.Owners = append(site.Owners, u.Email)
+            site.UpdatedAt = time.Now()
+        }
+    }
+
+    _, err2 := datastore.Put(c, key, &site)
+    if err2 != nil {
+        http.Error(w, err2.Error(), http.StatusInternalServerError)
         return
     }
 }
 
 func checksHandler(w http.ResponseWriter, r *http.Request) {
     c := appengine.NewContext(r)
-    q := datastore.NewQuery("site").
-        Order("CreatedAt")
+    q := querySiteAll()
     var sites []Site
     _, err := q.GetAll(c, &sites)
     if err != nil {
@@ -137,7 +182,7 @@ func checksHandler(w http.ResponseWriter, r *http.Request) {
     }
 }
 
-func hpingHandler(w http.ResponseWriter, r *http.Request) {
+func hPingHandler(w http.ResponseWriter, r *http.Request) {
     url := r.FormValue("url")
 
     c := appengine.NewContext(r)
@@ -186,4 +231,9 @@ func slackHandler(w http.ResponseWriter, r *http.Request) {
        contents, _ := ioutil.ReadAll(resp.Body)
        fmt.Fprint(w, string(contents))
     }
+}
+
+func querySiteAll() *datastore.Query {
+    return datastore.NewQuery("site").
+        Order("CreatedAt")
 }
