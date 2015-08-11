@@ -5,6 +5,7 @@ import (
     "appengine/datastore"
     "appengine/taskqueue"
     "appengine/urlfetch"
+    "appengine/user"
     "fmt"
     "io/ioutil"
     "net/http"
@@ -23,6 +24,43 @@ func init() {
     http.HandleFunc("/hping", hpingHandler)
     http.HandleFunc("/notification/slack", slackHandler)
     http.HandleFunc("/sites", sitesHandler)
+    http.HandleFunc("/signOut", signOutHandler)
+}
+
+func signInCheckMiddleware(w http.ResponseWriter, r *http.Request) *user.User {
+    c := appengine.NewContext(r)
+    u := user.Current(c)
+    if u == nil {
+        url, err := user.LoginURL(c, r.URL.String())
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return nil
+        }
+        w.Header().Set("Location", url)
+        w.WriteHeader(http.StatusFound)
+        return nil
+    } else {
+        if u.Email != "eiel.hal@gmail.com" {
+            return nil
+        }
+    }
+    return u
+}
+
+func signOutHandler(w http.ResponseWriter, r *http.Request) {
+    c := appengine.NewContext(r)
+    u := user.Current(c)
+    if u == nil {
+        w.Header().Set("Location", "/")
+        w.WriteHeader(http.StatusFound)
+    }
+    url, err := user.LogoutURL(c,r.URL.String())
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    w.Header().Set("Location", url)
+    w.WriteHeader(http.StatusFound)
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -30,9 +68,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func sitesHandler(w http.ResponseWriter, r *http.Request) {
-    if (r.Method == "POST") {
-        createSitesHandler(w, r)
+    u := signInCheckMiddleware(w, r)
+    if u == nil {
+        fmt.Fprint(w, "アクセス権限がありません")
         return
+    }
+    switch r.Method {
+    case "POST": createSitesHandler(w, r)
+    case "GET": fmt.Fprint(w, u)
     }
 }
 
