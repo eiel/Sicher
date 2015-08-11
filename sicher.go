@@ -23,31 +23,11 @@ type Site struct {
 
 func init() {
     http.HandleFunc("/", handler)
-    http.HandleFunc("/checks", checksHandler)
-    http.HandleFunc("/hping", hPingHandler)
-    http.HandleFunc("/notification/slack", slackHandler)
+    http.HandleFunc("/backend/checks", checksHandler)
+    http.HandleFunc("/backend/hping", hPingHandler)
+    http.HandleFunc("/backend/notification/slack", slackHandler)
     http.HandleFunc("/sites", sitesHandler)
     http.HandleFunc("/signOut", signOutHandler)
-}
-
-func signInCheckMiddleware(w http.ResponseWriter, r *http.Request) *user.User {
-    c := appengine.NewContext(r)
-    u := user.Current(c)
-    if u == nil {
-        url, err := user.LoginURL(c, r.URL.String())
-        if err != nil {
-            http.Error(w, err.Error(), http.StatusInternalServerError)
-            return nil
-        }
-        w.Header().Set("Location", url)
-        w.WriteHeader(http.StatusFound)
-        return nil
-    } else {
-        if u.Email != "eiel.hal@gmail.com" {
-            return nil
-        }
-    }
-    return u
 }
 
 func signOutHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,11 +51,8 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func sitesHandler(w http.ResponseWriter, r *http.Request) {
-    u := signInCheckMiddleware(w, r)
-    if u == nil {
-        fmt.Fprint(w, "アクセス権限がありません")
-        return
-    }
+    c := appengine.NewContext(r)
+    u := user.Current(c)
     switch r.Method {
     case "GET":{
         c := appengine.NewContext(r)
@@ -96,7 +73,6 @@ func sitesHandler(w http.ResponseWriter, r *http.Request) {
             http.Error(w, err.Error(), http.StatusInternalServerError)
             return
         }
-        fmt.Fprintln(w, sites)
         for i, site := range sites {
             fmt.Fprint(w,keys[i])
             fmt.Fprint(w,":" + site.Url + "\n")
@@ -180,6 +156,7 @@ func checksHandler(w http.ResponseWriter, r *http.Request) {
            return
        }
     }
+    fmt.Fprint(w, "Success")
 }
 
 func hPingHandler(w http.ResponseWriter, r *http.Request) {
