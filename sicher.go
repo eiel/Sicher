@@ -79,17 +79,24 @@ func sitesHandler(w http.ResponseWriter, r *http.Request) {
     case "GET":
         c := appengine.NewContext(r)
         fmt.Fprintln(w, u)
+        if u.Admin {
+            fmt.Fprintln(w, "admin")
+        }
         var sites []Site
         q := datastore.NewQuery("site").
-            Filter("Owners =", u.Email).
-            Order("CreatedAt")
-        _, err := q.GetAll(c, &sites)
+        Order("CreatedAt")
+        if !u.Admin {
+            q = q.Filter("Owners =", u.Email)
+        }
+
+        keys, err := q.GetAll(c, &sites)
         if err != nil {
             http.Error(w, err.Error(), http.StatusInternalServerError)
             return
         }
-        for _, site := range sites {
-            fmt.Fprint(w,site.Url + "\n")
+        for i, site := range sites {
+            fmt.Fprint(w,keys[i])
+            fmt.Fprint(w,":" + site.Url + "\n")
         }
     }
 }
