@@ -15,6 +15,7 @@ import (
 
 type Site struct {
     Url       string
+    Owners     []string
     CreatedAt time.Time
 }
 
@@ -74,17 +75,32 @@ func sitesHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
     switch r.Method {
-    case "POST": createSitesHandler(w, r)
-    case "GET": fmt.Fprint(w, u)
+    case "POST": createSites(w, r, u)
+    case "GET":
+        c := appengine.NewContext(r)
+        fmt.Fprintln(w, u)
+        var sites []Site
+        q := datastore.NewQuery("site").
+            Filter("Owners =", u.Email).
+            Order("CreatedAt")
+        _, err := q.GetAll(c, &sites)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        for _, site := range sites {
+            fmt.Fprint(w,site.Url + "\n")
+        }
     }
 }
 
-func createSitesHandler(w http.ResponseWriter, r *http.Request) {
+func createSites(w http.ResponseWriter, r *http.Request, u *user.User) {
     url := r.FormValue("url")
 
     c := appengine.NewContext(r)
     s := Site{
         Url: url,
+        Owners: []string{u.Email},
         CreatedAt: time.Now(),
     }
     _, err := datastore.Put(c, datastore.NewIncompleteKey(c, "site", nil), &s)
