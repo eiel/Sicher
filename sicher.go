@@ -149,7 +149,7 @@ func checksHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
     for _, site := range sites {
-       t := taskqueue.NewPOSTTask("/hping",
+       t := taskqueue.NewPOSTTask("/backend/hping",
          map[string][]string{"url": {site.Url}})
        if _, err := taskqueue.Add(c, t, ""); err != nil {
            http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -171,7 +171,7 @@ func hPingHandler(w http.ResponseWriter, r *http.Request) {
         c.Debugf("Fail",)
        fmt.Fprint(w, err.Error())
        // TODO datastroeに記録する
-       t := taskqueue.NewPOSTTask("/notification/slack",
+       t := taskqueue.NewPOSTTask("/backend/notification/slack",
        map[string][]string{"url": {url}})
        if _, err := taskqueue.Add(c, t, ""); err != nil {
            http.Error(w, err.Error(), http.StatusInternalServerError)
