@@ -1,4 +1,8 @@
 cron:
 - description: checks
   url: /backend/checks
-  schedule: every 10 minutes
+  schedule: every 5 minutes from 23:00 to 16:00
+
+- description: checks
+  url: /backend/checks
+  schedule: every 60 minutes from 16:00 to 23:00
