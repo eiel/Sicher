@@ -163,7 +163,12 @@ func hPingHandler(w http.ResponseWriter, r *http.Request) {
     url := r.FormValue("url")
 
     c := appengine.NewContext(r)
-    client := urlfetch.Client(c)
+    client := http.Client{
+        Transport: &urlfetch.Transport{
+            Context: c,
+            Deadline: 10 * time.Second,
+        },
+    }
 
     c.Debugf("HEAD " + url)
     resp, err := client.Head(url)
